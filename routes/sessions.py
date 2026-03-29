@@ -12,9 +12,16 @@ settings_cache = TTLCache(maxsize=5, ttl=300)
 def get_cached_settings(db):
     if "latest" in settings_cache:
         return settings_cache["latest"]
-    settings = db.table("settings").select("*").order("updated_at", desc=True).limit(1).execute()
+    # Strictly fetch the primary settings row (ID: 1) to match other routes
+    settings = db.table("settings").select("*").eq("id", 1).execute()
     if settings.data:
         settings_cache["latest"] = settings.data
+    else:
+        # Fallback to any row if ID 1 isn't initialized
+        fallback = db.table("settings").select("*").limit(1).execute()
+        if fallback.data:
+            settings_cache["latest"] = fallback.data
+            return fallback.data
     return settings.data
 
 class SessionStart(BaseModel):
@@ -158,10 +165,10 @@ async def end_session(data: SessionEnd, db=Depends(get_db)):
             "end_time": end_time.isoformat(),
             "total_minutes": total_minutes,
             "total_amount": total_amount,
-            "gross_amount": gross_amount,
-            "advance_amount": advance_already_paid,
-            "commission_amount": commission_amount,
-            "upi_id": upi_id,
+            "grossAmount": gross_amount,
+            "advanceAmount": advance_already_paid,
+            "commissionAmount": commission_amount,
+            "upiId": upi_id,
             "rate": price_per_hour
         }
     else:

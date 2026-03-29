@@ -164,6 +164,9 @@ async def reset_system(db=Depends(get_db)):
         try:
             db.table("monthly_settlements").delete().neq("id", 0).execute()
         except: pass
+        try:
+            db.table("settlements").delete().neq("id", 0).execute()
+        except: pass
         
         # 3. Reset Wallet
         settings = db.table("settings").select("id").eq("id", 1).execute()

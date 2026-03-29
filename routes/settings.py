@@ -12,7 +12,8 @@ class SettingsUpdate(BaseModel):
 
 @router.get("/")
 async def get_settings(db=Depends(get_db)):
-    response = db.table("settings").select("*").order("updated_at", desc=True).limit(1).execute()
+    # Strictly fetch the primary settings row (ID: 1)
+    response = db.table("settings").select("*").eq("id", 1).execute()
     if not response.data:
         # Return default if no settings exist
         return {
@@ -36,13 +37,11 @@ async def get_settings(db=Depends(get_db)):
 @router.post("/")
 async def update_settings(settings: SettingsUpdate, db=Depends(get_db)):
     try:
-        # Get the latest settings row or create one
-        existing = db.table("settings").select("id").limit(1).execute()
+        # Strictly target row ID: 1
+        existing = db.table("settings").select("id").eq("id", 1).execute()
         
         if existing.data:
-            row_id = existing.data[0]["id"]
-            
-            # Initial attempt with full schema
+            # Update row with ID: 1
             try:
                 response = db.table("settings").update({
                     "small_price_per_hour": settings.small_price_per_hour,
@@ -50,7 +49,7 @@ async def update_settings(settings: SettingsUpdate, db=Depends(get_db)):
                     "upi_id": settings.upi_id,
                     "is_commission_enabled": settings.is_commission_enabled,
                     "updated_at": "now()"
-                }).eq("id", row_id).execute()
+                }).eq("id", 1).execute()
             except Exception as e:
                 # Fallback if column is missing (e.g. small_price_per_hour)
                 print(f"DEBUG: Update failed (likely missing column): {e}")
@@ -60,10 +59,11 @@ async def update_settings(settings: SettingsUpdate, db=Depends(get_db)):
                     "is_commission_enabled": settings.is_commission_enabled,
                     "updated_at": "now()"
                 }
-                response = db.table("settings").update(update_payload).eq("id", row_id).execute()
+                response = db.table("settings").update(update_payload).eq("id", 1).execute()
         else:
-            # Insert new row
+            # Insert row with ID: 1
             response = db.table("settings").insert({
+                "id": 1,
                 "small_price_per_hour": settings.small_price_per_hour,
                 "big_price_per_hour": settings.big_price_per_hour,
                 "upi_id": settings.upi_id,

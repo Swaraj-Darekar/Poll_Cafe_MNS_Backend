@@ -24,25 +24,31 @@ async def get_superadmin_stats(db=Depends(get_db)):
         start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
         start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         
-        # 0. Fetch Wallet Balance & Commission (Very Robustly)
-        # We fetch all fields but use .get() to avoid errors if columns are missing
-        settings_res = db.table("settings").select("*").order("updated_at", desc=True).limit(1).execute()
+        # 0. Fetch Wallet Balance & Commission (Strictly Row ID: 1)
+        # We fetch ID 1 to maintain consistency between environments.
+        settings_res = db.table("settings").select("*").eq("id", 1).execute()
         
         wallet_balance = 0.0
         commission = 5.0
         
         if settings_res.data:
             s_data = settings_res.data[0]
-            # Use .get() which returns None if key is missing, then fallback to default
             wallet_balance = float(s_data.get("wallet_balance") or 0.0)
             commission = float(s_data.get("commission_per_booking") or 5.0)
+        else:
+            # If ID 1 is missing, check if ANY settings exist as a fallback for old DBs
+            fallback = db.table("settings").select("*").limit(1).execute()
+            if fallback.data:
+                s_data = fallback.data[0]
+                wallet_balance = float(s_data.get("wallet_balance") or 0.0)
+                commission = float(s_data.get("commission_per_booking") or 5.0)
         
         # 1. Today's Bookings (Paid sessions)
-        # Use start_time as fallback for created_at
+        # MUST use end_time to match analytics logic (when the sale was finalized)
         today_sessions = db.table("sessions")\
             .select("id")\
             .eq("payment_status", "paid")\
-            .gte("start_time", start_of_day.isoformat())\
+            .gte("end_time", start_of_day.isoformat())\
             .execute()
         today_count = len(today_sessions.data)
         
@@ -50,7 +56,7 @@ async def get_superadmin_stats(db=Depends(get_db)):
         month_sessions = db.table("sessions")\
             .select("id")\
             .eq("payment_status", "paid")\
-            .gt("start_time", start_of_month.isoformat())\
+            .gte("end_time", start_of_month.isoformat())\
             .execute()
         month_count = len(month_sessions.data)
         
@@ -81,10 +87,13 @@ async def get_superadmin_stats(db=Depends(get_db)):
 @router.post("/wallet/add")
 async def add_wallet_money(data: WalletRequest, db=Depends(get_db)):
     try:
-        # Fetch current settings
-        settings = db.table("settings").select("*").order("updated_at", desc=True).limit(1).execute()
+        # Fetch current settings (Strictly ID: 1)
+        settings = db.table("settings").select("*").eq("id", 1).execute()
         if not settings.data:
-            raise HTTPException(status_code=404, detail="Settings not found")
+            # Fallback to any row if ID 1 isn't initialized yet
+            settings = db.table("settings").select("*").limit(1).execute()
+            if not settings.data:
+                raise HTTPException(status_code=404, detail="Settings not found")
             
         sid = settings.data[0]["id"]
         current_balance = float(settings.data[0].get("wallet_balance", 0))

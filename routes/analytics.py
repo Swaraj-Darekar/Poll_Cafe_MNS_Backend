@@ -23,6 +23,7 @@ async def get_analytics(db=Depends(get_db)):
             .execute()
         
         if latest_settlement.data:
+            # Use the exact timestamp of the last settlement
             cycle_start = datetime.fromisoformat(latest_settlement.data[0]["created_at"].replace('Z', '+00:00'))
         else:
             # Default to start of current month if no settlements exist

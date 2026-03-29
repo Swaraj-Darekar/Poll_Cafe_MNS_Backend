@@ -117,9 +117,13 @@ async def add_wallet_money(data: WalletRequest, db=Depends(get_db)):
 @router.post("/settings")
 async def update_superadmin_settings(data: SuperAdminSettingsRequest, db=Depends(get_db)):
     try:
-        settings = db.table("settings").select("id").order("updated_at", desc=True).limit(1).execute()
+        # Strictly target row ID: 1
+        settings = db.table("settings").select("id").eq("id", 1).execute()
         if not settings.data:
-            raise HTTPException(status_code=404, detail="Settings not found")
+            # Fallback for old databases
+            settings = db.table("settings").select("id").limit(1).execute()
+            if not settings.data:
+                raise HTTPException(status_code=404, detail="Settings not found")
         
         sid = settings.data[0]["id"]
         db.table("settings").update({"commission_per_booking": data.commission}).eq("id", sid).execute()
@@ -162,7 +166,10 @@ async def reset_system(db=Depends(get_db)):
         except: pass
         
         # 3. Reset Wallet
-        settings = db.table("settings").select("id").order("updated_at", desc=True).limit(1).execute()
+        settings = db.table("settings").select("id").eq("id", 1).execute()
+        if not settings.data:
+            settings = db.table("settings").select("id").limit(1).execute()
+        
         if settings.data:
             sid = settings.data[0]["id"]
             db.table("settings").update({

@@ -3,26 +3,20 @@ from pydantic import BaseModel
 from datetime import datetime, timezone
 from database import get_db
 from typing import Optional
-from cachetools import TTLCache
 
 router = APIRouter(tags=["sessions"])
 
-settings_cache = TTLCache(maxsize=5, ttl=300)
-
-def get_cached_settings(db):
-    if "latest" in settings_cache:
-        return settings_cache["latest"]
-    # Strictly fetch the primary settings row (ID: 1) to match other routes
+def get_settings_direct(db):
+    # Strictly fetch the primary settings row (ID: 1)
+    # No caching to ensure instant updates in live environment
     settings = db.table("settings").select("*").eq("id", 1).execute()
     if settings.data:
-        settings_cache["latest"] = settings.data
+        return settings.data
     else:
         # Fallback to any row if ID 1 isn't initialized
         fallback = db.table("settings").select("*").limit(1).execute()
-        if fallback.data:
-            settings_cache["latest"] = fallback.data
-            return fallback.data
-    return settings.data
+        return fallback.data
+    return []
 
 class SessionStart(BaseModel):
     table_id: int
@@ -94,8 +88,8 @@ async def end_session(data: SessionEnd, db=Depends(get_db)):
     duration = end_time - start_time
     total_minutes = int(duration.total_seconds() / 60)
     
-    # 3. Fetch price from settings
-    settings_data = get_cached_settings(db)
+    # 3. Fetch price from settings (Directly, no cache)
+    settings_data = get_settings_direct(db)
     
     # Helper to get setting safely
     def get_setting(key, default):
@@ -265,14 +259,14 @@ async def mark_paid(session_id: int, data: SessionPay, db=Depends(get_db)):
             db.table("tables").update({"status": "available"}).eq("id", table_id).execute()
 
         # 4. Commission Logic: Deduct from Wallet (Mandatory always)
-        settings_data = get_cached_settings(db)
+        settings_data = get_settings_direct(db)
         if settings_data:
             sid = settings_data[0]["id"]
             current_balance = float(settings_data[0].get("wallet_balance", 0))
             commission_per_booking = float(settings_data[0].get("commission_per_booking") or 5.0)
             new_balance = current_balance - commission_per_booking
             
-            # Update settings
+            # Update settings (Strictly by ID)
             db.table("settings").update({"wallet_balance": new_balance}).eq("id", sid).execute()
             
             # Log transaction

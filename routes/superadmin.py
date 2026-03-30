@@ -161,12 +161,6 @@ async def reset_system(db=Depends(get_db)):
         db.table("wallet_transactions").delete().neq("id", 0).execute()
         db.table("superadmin_settlements").delete().neq("id", 0).execute()
         db.table("expenses").delete().neq("id", 0).execute()
-        try:
-            db.table("monthly_settlements").delete().neq("id", 0).execute()
-        except: pass
-        try:
-            db.table("settlements").delete().neq("id", 0).execute()
-        except: pass
         
         # 3. Reset Wallet
         settings = db.table("settings").select("id").eq("id", 1).execute()
@@ -179,8 +173,26 @@ async def reset_system(db=Depends(get_db)):
                 "wallet_balance": 0.0
             }).eq("id", sid).execute()
             
-        # 4. Reset Table status
-        db.table("tables").update({"status": "available"}).neq("id", 0).execute()
+        # 4. Reset Table status & Flags
+        db.table("tables").update({
+            "status": "available",
+            "is_walkin_reserved": False
+        }).neq("id", 0).execute()
+        
+        # 5. Clear Menu (Reset to empty/fresh)
+        # We delete all menu items so the user can start over.
+        try:
+            db.table("menu").delete().neq("id", 0).execute()
+        except Exception as e:
+            print(f"DEBUG: Menu reset failed: {e}")
+
+        # 6. Clear all variations of settlement tables
+        tables_to_clear = ["monthly_settlements", "settlements"]
+        for table_name in tables_to_clear:
+            try:
+                db.table(table_name).delete().neq("id", 0).execute()
+            except:
+                pass
         
         return {"success": True, "message": "System reset completed."}
     except Exception as e:

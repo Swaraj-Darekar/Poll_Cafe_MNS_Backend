@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from database import get_db
-from routes import settings, tables, sessions, analytics, bookings, superadmin, expenses
+from routes import settings, tables, sessions, analytics, bookings, superadmin, expenses, menu
 
 app = FastAPI(title="Pool Cafe Management API")
 
@@ -22,6 +22,7 @@ app.include_router(analytics.router)
 app.include_router(bookings.router)
 app.include_router(superadmin.router)
 app.include_router(expenses.router)
+app.include_router(menu.router)
 
 @app.get("/")
 async def root():

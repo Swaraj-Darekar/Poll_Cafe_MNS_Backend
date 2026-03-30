@@ -100,6 +100,8 @@ async def end_session(data: SessionEnd, db=Depends(get_db)):
     table_type = current_session["tables"]["type"]
     if table_type == "big":
         price_per_hour = get_setting("big_price_per_hour", 150)
+    elif table_type == "sd":
+        price_per_hour = get_setting("sd_price_per_hour", 200)
     else:
         # Fallback to old price_per_hour if small_price_per_hour is missing
         price_per_hour = get_setting("small_price_per_hour", get_setting("price_per_hour_small", get_setting("price_per_hour", 100)))
@@ -208,6 +210,47 @@ async def get_active_sessions(db=Depends(get_db)):
     response = db.table("sessions").select("*").is_("end_time", "null").execute()
     return response.data
 
+class TakeawayPay(BaseModel):
+    total_amount: float
+    payment_method: str = "online"
+
+@router.post("/takeaway/pay")
+async def takeaway_pay(data: TakeawayPay, db=Depends(get_db)):
+    """Record a take-away sale as a completed paid session so it appears in analytics."""
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        session_data = {
+            "table_id": None,
+            "customer_name": "Take Away",
+            "customer_phone": "0000000000",
+            "start_time": now,
+            "end_time": now,
+            "total_minutes": 0,
+            "total_amount": data.total_amount,
+            "payment_status": "paid",
+            "payment_method": data.payment_method,
+        }
+        
+        try:
+            full_data = dict(session_data)
+            full_data["gross_amount"] = data.total_amount
+            full_data["commission_amount"] = 0
+            response = db.table("sessions").insert(full_data).execute()
+        except:
+            try:
+                response = db.table("sessions").insert(session_data).execute()
+            except:
+                fallback_data = {k: v for k, v in session_data.items() if k != "payment_method"}
+                response = db.table("sessions").insert(fallback_data).execute()
+
+        if not response.data:
+            raise HTTPException(status_code=500, detail="Failed to record takeaway sale")
+        print(f"DEBUG: Takeaway sale recorded - Rs.{data.total_amount} via {data.payment_method}")
+        return {"status": "ok", "session": response.data[0]}
+    except Exception as e:
+        print(f"ERROR recording takeaway: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/{session_id}/pay")
 async def mark_paid(session_id: int, data: SessionPay, db=Depends(get_db)):
     try:
@@ -258,26 +301,27 @@ async def mark_paid(session_id: int, data: SessionPay, db=Depends(get_db)):
         if table_id:
             db.table("tables").update({"status": "available"}).eq("id", table_id).execute()
 
-        # 4. Commission Logic: Deduct from Wallet (Mandatory always)
-        settings_data = get_settings_direct(db)
-        if settings_data:
-            sid = settings_data[0]["id"]
-            current_balance = float(settings_data[0].get("wallet_balance", 0))
-            commission_per_booking = float(settings_data[0].get("commission_per_booking") or 5.0)
-            new_balance = current_balance - commission_per_booking
-            
-            # Update settings (Strictly by ID)
-            db.table("settings").update({"wallet_balance": new_balance}).eq("id", sid).execute()
-            
-            # Log transaction
-            db.table("wallet_transactions").insert({
-                "type": "debit",
-                "amount": commission_per_booking,
-                "reason": f"Commission for Session #{session_id}"
-            }).execute()
-            
-            # Invalidate cache since we updated settings
-            settings_cache.pop("latest", None)
+        # 4. Commission Logic: Deduct from Wallet (Table sessions only)
+        # Takeaway orders (null table_id) should not be charged commission.
+        if table_id:
+            settings_data = get_settings_direct(db)
+            if settings_data:
+                sid = settings_data[0]["id"]
+                current_balance = float(settings_data[0].get("wallet_balance", 0))
+                commission_per_booking = float(settings_data[0].get("commission_per_booking") or 5.0)
+                new_balance = current_balance - commission_per_booking
+                
+                # Update settings (Strictly by ID)
+                db.table("settings").update({"wallet_balance": new_balance}).eq("id", sid).execute()
+                
+                # Log transaction
+                db.table("wallet_transactions").insert({
+                    "type": "debit",
+                    "amount": commission_per_booking,
+                    "reason": f"Commission for Session #{session_id}"
+                }).execute()
+        else:
+            print(f"DEBUG: No wallet deduction for session #{session_id} (Take Away / No Table)")
 
         return response.data[0]
     except Exception as e:
@@ -285,4 +329,5 @@ async def mark_paid(session_id: int, data: SessionPay, db=Depends(get_db)):
         # but we should log the error
         print(f"ERROR in mark_paid commission logic: {e}")
         return response.data[0] if 'response' in locals() and response.data else {"id": session_id, "payment_status": "paid"}
+
 

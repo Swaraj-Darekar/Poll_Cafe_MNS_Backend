@@ -7,6 +7,7 @@ router = APIRouter(prefix="/settings", tags=["settings"])
 class SettingsUpdate(BaseModel):
     small_price_per_hour: int
     big_price_per_hour: int
+    sd_price_per_hour: int
     upi_id: str
     is_commission_enabled: bool = False
 
@@ -19,6 +20,7 @@ async def get_settings(db=Depends(get_db)):
         return {
             "small_price_per_hour": 100, 
             "big_price_per_hour": 150, 
+            "sd_price_per_hour": 200,
             "upi_id": "example@upi",
             "is_commission_enabled": False
         }
@@ -29,6 +31,7 @@ async def get_settings(db=Depends(get_db)):
         "id": data.get("id"),
         "small_price_per_hour": data.get("small_price_per_hour") or data.get("price_per_hour_small") or data.get("price_per_hour", 100),
         "big_price_per_hour": data.get("big_price_per_hour") or data.get("price_per_hour_big", 150),
+        "sd_price_per_hour": data.get("sd_price_per_hour") or 200,
         "upi_id": data.get("upi_id", "example@upi"),
         "is_commission_enabled": data.get("is_commission_enabled", False),
         "commission_per_booking": data.get("commission_per_booking", 5.0)
@@ -46,6 +49,7 @@ async def update_settings(settings: SettingsUpdate, db=Depends(get_db)):
                 response = db.table("settings").update({
                     "small_price_per_hour": settings.small_price_per_hour,
                     "big_price_per_hour": settings.big_price_per_hour,
+                    "sd_price_per_hour": settings.sd_price_per_hour,
                     "upi_id": settings.upi_id,
                     "is_commission_enabled": settings.is_commission_enabled,
                     "updated_at": "now()"
@@ -66,6 +70,7 @@ async def update_settings(settings: SettingsUpdate, db=Depends(get_db)):
                 "id": 1,
                 "small_price_per_hour": settings.small_price_per_hour,
                 "big_price_per_hour": settings.big_price_per_hour,
+                "sd_price_per_hour": settings.sd_price_per_hour,
                 "upi_id": settings.upi_id,
                 "is_commission_enabled": settings.is_commission_enabled
             }).execute()

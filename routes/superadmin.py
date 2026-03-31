@@ -186,15 +186,15 @@ async def reset_system(db=Depends(get_db)):
         except Exception as e:
             print(f"DEBUG: Menu reset failed: {e}")
 
-        # 6. Clear all variations of settlement tables
-        tables_to_clear = ["monthly_settlements", "settlements"]
+        # 6. Clear all variations of settlement tables AND history
+        tables_to_clear = ["settlements", "monthly_settlements", "superadmin_settlements"]
         for table_name in tables_to_clear:
             try:
                 db.table(table_name).delete().neq("id", 0).execute()
-            except:
-                pass
+            except Exception as e:
+                print(f"DEBUG: Clear {table_name} failed: {e}")
         
-        return {"success": True, "message": "System reset completed."}
+        return {"success": True, "message": "System reset completed. All data cleared."}
     except Exception as e:
         print(f"ERROR in reset_system: {e}")
         raise HTTPException(status_code=500, detail=str(e))

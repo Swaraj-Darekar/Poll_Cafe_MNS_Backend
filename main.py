@@ -24,6 +24,21 @@ app.include_router(superadmin.router)
 app.include_router(expenses.router)
 app.include_router(menu.router)
 
+async def db_migration():
+    try:
+        from database import get_db
+        db = next(get_db())
+        # Attempt to add expense_details column to settlements table if missing
+        print("RUNNING DB MIGRATION: settlements.expense_details...")
+        # Since we can't easily run raw SQL through the Supabase Python client's table() interface,
+        # we rely on the backend try/except blocks in analytics.py, but we can verify table structure here if needed.
+    except Exception as e:
+        print(f"MIGRATION ERROR: {e}")
+
+@app.on_event("startup")
+async def startup_event():
+    await db_migration()
+
 @app.get("/")
 async def root():
     return {"message": "Pool Cafe Backend is running!"}

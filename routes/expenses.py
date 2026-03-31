@@ -41,6 +41,23 @@ async def get_current_cycle_expenses(db=Depends(get_db)):
         # Return empty array if the table doesn't exist yet
         return []
 
+@router.get("/history")
+async def get_expenses_in_range(start_date: str, end_date: str, db=Depends(get_db)):
+    try:
+        # Fetch expenses BETWEEN start_date and end_date
+        response = db.table("expenses")\
+            .select("*")\
+            .gte("created_at", start_date)\
+            .lte("created_at", end_date)\
+            .order("created_at", desc=False)\
+            .execute()
+            
+        return response.data or []
+    except Exception as e:
+        print(f"ERROR fetching historical expenses: {e}")
+        return []
+
+
 @router.post("/")
 async def add_expense(data: ExpenseRequest, db=Depends(get_db)):
     try:

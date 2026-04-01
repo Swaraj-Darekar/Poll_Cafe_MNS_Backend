@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends
+import os
 from fastapi.middleware.cors import CORSMiddleware
 from database import get_db
 from routes import settings, tables, sessions, analytics, bookings, superadmin, expenses, menu
@@ -43,6 +44,10 @@ async def startup_event():
 async def root():
     return {"message": "Pool Cafe Backend is running!"}
 
+@app.get("/api/health")
+async def health_check():
+    return {"status": "ok", "timestamp": "live"}
+
 @app.get("/test-db")
 async def test_db(db=Depends(get_db)):
     try:
@@ -54,4 +59,6 @@ async def test_db(db=Depends(get_db)):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # Use PORT from environment for Render deployment
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)

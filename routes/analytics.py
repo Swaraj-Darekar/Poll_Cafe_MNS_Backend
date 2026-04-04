@@ -208,20 +208,29 @@ async def get_session_history(db=Depends(get_db)):
                 "total_minutes": s.get("total_minutes", 0) or 0,
                 "total_amount": s.get("total_amount", 0) or 0,
                 "gross_amount": s.get("gross_amount", 0) or 0,
-                "commission_amount": s.get("commission_amount", 0) or 0,
+                "extra_amount": s.get("extra_amount", 0) or 0,
+                "discount_amount": s.get("discount_amount", 0) or 0,
                 "payment_method": s.get("payment_method", "online"),
                 "end_time": end_time_ist.strftime("%I:%M %p"),
                 "start_time_raw": s.get("start_time", ""),
                 "end_time_raw": end_time_str
             }
             
-            # Calculate discount if gross > total (discount = gross - total - commission)
+            # Calculate discount safely
+            # Priority: 1. stored discount_amount, 2. calculated (gross + comm + extra - adv - total)
             gross = entry["gross_amount"]
             total = entry["total_amount"]
             commission = entry["commission_amount"]
+            extra = entry["extra_amount"]
             advance = s.get("advance_amount", 0) or 0
-            discount = max(0, gross + commission - advance - total) if not is_takeaway else 0
-            entry["discount"] = round(discount, 2)
+            
+            stored_discount = s.get("discount_amount", 0) or 0
+            if stored_discount > 0:
+                entry["discount"] = stored_discount
+            else:
+                # Fallback for old rows
+                calc_discount = max(0, gross + commission + extra - advance - total) if not is_takeaway else 0
+                entry["discount"] = round(calc_discount, 2)
             
             if biz_date not in days:
                 days[biz_date] = []

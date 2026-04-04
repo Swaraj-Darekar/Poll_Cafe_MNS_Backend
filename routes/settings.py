@@ -10,6 +10,8 @@ class SettingsUpdate(BaseModel):
     sd_price_per_hour: int
     upi_id: str
     is_commission_enabled: bool = False
+    merchant_name: str = "Pool Cafe"
+    mcc: str = "0000"
 
 @router.get("/")
 async def get_settings(db=Depends(get_db)):
@@ -33,6 +35,8 @@ async def get_settings(db=Depends(get_db)):
         "big_price_per_hour": data.get("big_price_per_hour") or data.get("price_per_hour_big", 150),
         "sd_price_per_hour": data.get("sd_price_per_hour") or 200,
         "upi_id": data.get("upi_id", "example@upi"),
+        "merchant_name": data.get("merchant_name", "Pool Cafe"),
+        "mcc": data.get("mcc", "0000"),
         "is_commission_enabled": data.get("is_commission_enabled", False),
         "commission_per_booking": data.get("commission_per_booking", 5.0)
     }
@@ -51,6 +55,8 @@ async def update_settings(settings: SettingsUpdate, db=Depends(get_db)):
                     "big_price_per_hour": settings.big_price_per_hour,
                     "sd_price_per_hour": settings.sd_price_per_hour,
                     "upi_id": settings.upi_id,
+                    "merchant_name": settings.merchant_name,
+                    "mcc": settings.mcc,
                     "is_commission_enabled": settings.is_commission_enabled,
                     "updated_at": "now()"
                 }).eq("id", 1).execute()
@@ -72,6 +78,8 @@ async def update_settings(settings: SettingsUpdate, db=Depends(get_db)):
                 "big_price_per_hour": settings.big_price_per_hour,
                 "sd_price_per_hour": settings.sd_price_per_hour,
                 "upi_id": settings.upi_id,
+                "merchant_name": settings.merchant_name,
+                "mcc": settings.mcc,
                 "is_commission_enabled": settings.is_commission_enabled
             }).execute()
             

@@ -32,6 +32,8 @@ class SessionPay(BaseModel):
     total_amount: float
     gross_amount: float
     commission_amount: float
+    extra_amount: float = 0.0
+    discount_amount: float = 0.0
     duration_minutes: int
     payment_method: str = "online"
 
@@ -213,6 +215,8 @@ async def get_active_sessions(db=Depends(get_db)):
 class TakeawayPay(BaseModel):
     total_amount: float
     payment_method: str = "online"
+    extra_amount: float = 0.0
+    discount_amount: float = 0.0
 
 @router.post("/takeaway/pay")
 async def takeaway_pay(data: TakeawayPay, db=Depends(get_db)):
@@ -227,6 +231,8 @@ async def takeaway_pay(data: TakeawayPay, db=Depends(get_db)):
             "end_time": now,
             "total_minutes": 0,
             "total_amount": data.total_amount,
+            "extra_amount": data.extra_amount,
+            "discount_amount": data.discount_amount,
             "payment_status": "paid",
             "payment_method": data.payment_method,
         }
@@ -266,6 +272,8 @@ async def mark_paid(session_id: int, data: SessionPay, db=Depends(get_db)):
             "total_amount": data.total_amount,
             "gross_amount": data.gross_amount,
             "commission_amount": data.commission_amount,
+            "extra_amount": data.extra_amount,
+            "discount_amount": data.discount_amount,
             "total_minutes": data.duration_minutes,
             "payment_method": data.payment_method
         }

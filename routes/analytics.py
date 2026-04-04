@@ -143,23 +143,14 @@ async def get_session_history(db=Depends(get_db)):
         IST = timezone(timedelta(hours=5, minutes=30))
         now_ist = datetime.now(IST)
         
-        # Find cycle start (last settlement)
-        latest_settlement = db.table("settlements")\
-            .select("created_at")\
-            .order("created_at", desc=True)\
-            .limit(1)\
-            .execute()
+        # Fetch sessions from the last 30 days to ensure recent history is always visible
+        history_start = (now_ist - timedelta(days=30)).astimezone(timezone.utc)
         
-        if latest_settlement.data:
-            cycle_start = datetime.fromisoformat(latest_settlement.data[0]["created_at"].replace('Z', '+00:00'))
-        else:
-            cycle_start = (now_ist.replace(day=1, hour=0, minute=0, second=0, microsecond=0)).astimezone(timezone.utc)
-        
-        # Fetch all paid sessions since cycle start, with table info
+        # Fetch all paid sessions since history_start, with table info
         sessions_response = db.table("sessions")\
             .select("*, tables(table_number, type)")\
             .eq("payment_status", "paid")\
-            .gte("end_time", cycle_start.isoformat())\
+            .gte("end_time", history_start.isoformat())\
             .order("end_time", desc=True)\
             .execute()
         
@@ -210,6 +201,7 @@ async def get_session_history(db=Depends(get_db)):
                 "gross_amount": s.get("gross_amount", 0) or 0,
                 "extra_amount": s.get("extra_amount", 0) or 0,
                 "discount_amount": s.get("discount_amount", 0) or 0,
+                "commission_amount": s.get("commission_amount", 0) or 0,
                 "payment_method": s.get("payment_method", "online"),
                 "end_time": end_time_ist.strftime("%I:%M %p"),
                 "start_time_raw": s.get("start_time", ""),

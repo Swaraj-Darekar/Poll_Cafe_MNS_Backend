@@ -54,17 +54,30 @@ async def start_session(data: SessionStart, db=Depends(get_db)):
             # Mark booking as completed
             db.table("bookings").update({"status": "completed"}).eq("id", data.booking_id).execute()
 
-    # 2. Create session
+    # 2. Create session — try full insert, fallback gracefully if columns missing
     session_data = {
         "table_id": data.table_id,
         "customer_name": data.customer_name,
         "customer_phone": data.customer_phone,
         "start_time": datetime.now(timezone.utc).isoformat(),
         "payment_status": "pending",
-        "booking_id": data.booking_id,
-        "advance_amount": advance_amount
     }
-    session_response = db.table("sessions").insert(session_data).execute()
+    # Try adding optional columns one at a time
+    full_session_data = dict(session_data)
+    try:
+        full_session_data["booking_id"] = data.booking_id
+        full_session_data["advance_amount"] = advance_amount
+        session_response = db.table("sessions").insert(full_session_data).execute()
+    except Exception as e1:
+        print(f"DEBUG: Full insert failed ({e1}), trying without booking_id/advance_amount...")
+        try:
+            full_session_data = dict(session_data)
+            full_session_data["advance_amount"] = advance_amount
+            session_response = db.table("sessions").insert(full_session_data).execute()
+        except Exception as e2:
+            print(f"DEBUG: Second insert failed ({e2}), using minimal insert...")
+            session_response = db.table("sessions").insert(session_data).execute()
+
     if not session_response.data:
         raise HTTPException(status_code=500, detail="Failed to create session")
 

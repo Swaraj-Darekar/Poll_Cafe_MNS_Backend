@@ -10,6 +10,20 @@ class SettleRequest(BaseModel):
     year: int
     total_expense: float
 
+def fetch_all_paginated(query_builder):
+    all_data = []
+    limit = 1000
+    offset = 0
+    while True:
+        # Note: .range() modifies the query builder in place, so we execute it
+        response = query_builder.range(offset, offset + limit - 1).execute()
+        data = response.data or []
+        all_data.extend(data)
+        if len(data) < limit:
+            break
+        offset += limit
+    return all_data
+
 @router.get("/")
 async def get_analytics(db=Depends(get_db)):
     try:
@@ -49,49 +63,49 @@ async def get_analytics(db=Depends(get_db)):
         
         # 1. Fetch Effective Today's Paid Sessions (Session Balances)
         # Select * to gracefully handle payment_method if it exists
-        today_sessions = db.table("sessions")\
+        today_sessions_query = db.table("sessions")\
             .select("*")\
             .eq("payment_status", "paid")\
-            .gte("end_time", effective_today_start.isoformat())\
-            .execute()
+            .gte("end_time", effective_today_start.isoformat())
+        today_sessions_data = fetch_all_paginated(today_sessions_query)
         
         # 1.1 Fetch Today's Paid Bookings (Advances)
         # Assuming bookings advance_paid is usually online, but we can default it to online.
-        today_bookings = db.table("bookings")\
+        today_bookings_query = db.table("bookings")\
             .select("*")\
             .eq("payment_status", "paid")\
-            .gte("created_at", effective_today_start.isoformat())\
-            .execute()
+            .gte("created_at", effective_today_start.isoformat())
+        today_bookings_data = fetch_all_paginated(today_bookings_query)
         
         # 3. Fetch Business Yesterday's Paid Data (4:30 AM prev to 4:30 AM today)
-        yesterday_sessions = db.table("sessions")\
+        yesterday_sessions_query = db.table("sessions")\
             .select("*")\
             .eq("payment_status", "paid")\
             .gte("end_time", yesterday_start.isoformat())\
-            .lt("end_time", yesterday_end.isoformat())\
-            .execute()
+            .lt("end_time", yesterday_end.isoformat())
+        yesterday_sessions_data = fetch_all_paginated(yesterday_sessions_query)
             
-        yesterday_bookings = db.table("bookings")\
+        yesterday_bookings_query = db.table("bookings")\
             .select("*")\
             .eq("payment_status", "paid")\
             .gte("created_at", yesterday_start.isoformat())\
-            .lt("created_at", yesterday_end.isoformat())\
-            .execute()
+            .lt("created_at", yesterday_end.isoformat())
+        yesterday_bookings_data = fetch_all_paginated(yesterday_bookings_query)
 
         # 4. Fetch "Current Cycle" Paid Data (Since last settlement)
         # Note: We filter cycle_sessions by (max of cycle_start and today_start or just cycle_start?)
         # Cycle should be total since settlement.
-        cycle_sessions = db.table("sessions")\
+        cycle_sessions_query = db.table("sessions")\
             .select("*")\
             .eq("payment_status", "paid")\
-            .gte("end_time", cycle_start.isoformat())\
-            .execute()
+            .gte("end_time", cycle_start.isoformat())
+        cycle_sessions_data = fetch_all_paginated(cycle_sessions_query)
             
-        cycle_bookings = db.table("bookings")\
+        cycle_bookings_query = db.table("bookings")\
             .select("*")\
             .eq("payment_status", "paid")\
-            .gte("created_at", cycle_start.isoformat())\
-            .execute()
+            .gte("created_at", cycle_start.isoformat())
+        cycle_bookings_data = fetch_all_paginated(cycle_bookings_query)
 
         # Calculation helper
         def aggregate(sessions, bookings):
@@ -125,9 +139,9 @@ async def get_analytics(db=Depends(get_db)):
             }
 
         return {
-            "today": aggregate(today_sessions.data or [], today_bookings.data or []),
-            "yesterday": aggregate(yesterday_sessions.data or [], yesterday_bookings.data or []),
-            "cycle": aggregate(cycle_sessions.data or [], cycle_bookings.data or []),
+            "today": aggregate(today_sessions_data, today_bookings_data),
+            "yesterday": aggregate(yesterday_sessions_data, yesterday_bookings_data),
+            "cycle": aggregate(cycle_sessions_data, cycle_bookings_data),
             "cycle_start": cycle_start.isoformat(),
             "business_today_start": today_start.isoformat()
         }
@@ -147,14 +161,13 @@ async def get_session_history(db=Depends(get_db)):
         history_start = (now_ist - timedelta(days=30)).astimezone(timezone.utc)
         
         # Fetch all paid sessions since history_start, with table info
-        sessions_response = db.table("sessions")\
+        sessions_query = db.table("sessions")\
             .select("*, tables(table_number, type)")\
             .eq("payment_status", "paid")\
             .gte("end_time", history_start.isoformat())\
-            .order("end_time", desc=True)\
-            .execute()
-        
-        sessions = sessions_response.data or []
+            .order("end_time", desc=True)
+            
+        sessions = fetch_all_paginated(sessions_query)
         
         # Group sessions by business day (4:30 AM IST cutoff)
         # A business day runs from 4:30 AM to next day 4:30 AM
@@ -293,14 +306,13 @@ async def settle_month(data: SettleRequest, db=Depends(get_db)):
         # Include a 5-second buffer to capture expenses created at the very same moment
         snapshot_end_iso = (datetime.now(timezone.utc) + timedelta(seconds=5)).isoformat()
         
-        expenses_response = db.table("expenses")\
+        expenses_query = db.table("expenses")\
             .select("*")\
             .gte("created_at", cycle_start_iso)\
             .lte("created_at", snapshot_end_iso)\
-            .order("created_at", desc=False)\
-            .execute()
-        
-        expense_list = expenses_response.data or []
+            .order("created_at", desc=False)
+            
+        expense_list = fetch_all_paginated(expenses_query)
 
         
         # 2. Save to settlements table

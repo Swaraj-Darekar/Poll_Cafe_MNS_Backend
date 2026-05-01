@@ -55,7 +55,9 @@ async def get_analytics(db=Depends(get_db)):
         if latest_settlement.data:
             cycle_start = datetime.fromisoformat(latest_settlement.data[0]["created_at"].replace('Z', '+00:00'))
         else:
-            cycle_start = (now_ist.replace(day=1, hour=0, minute=0, second=0, microsecond=0)).astimezone(timezone.utc)
+            # No settlement yet — include ALL data since the beginning
+            # The cycle should ONLY reset when admin manually clicks "Settle This Month"
+            cycle_start = datetime(2000, 1, 1, tzinfo=timezone.utc)
 
         # 2. Fetch Business Today's Paid Data (since 4:30 AM OR last settlement, whichever is later)
         # This ensures that after a settlement, today's sales resets to 0

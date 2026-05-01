@@ -26,7 +26,8 @@ async def get_current_cycle_expenses(db=Depends(get_db)):
         if latest_settlement.data:
             cycle_start = datetime.fromisoformat(latest_settlement.data[0]["created_at"].replace('Z', '+00:00'))
         else:
-            cycle_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            # No settlement yet — include ALL expenses since the beginning
+            cycle_start = datetime(2000, 1, 1, tzinfo=timezone.utc)
 
         # Fetch expenses AFTER cycle_start
         response = db.table("expenses")\

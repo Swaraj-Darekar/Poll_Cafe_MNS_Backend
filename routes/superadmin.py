@@ -2,6 +2,27 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from datetime import datetime, timezone, timedelta
 from database import get_db
+import os
+import razorpay
+from dotenv import load_dotenv
+
+load_dotenv()
+
+RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID")
+RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET")
+
+client = None
+if RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET:
+    client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+
+class RazorpayOrderRequest(BaseModel):
+    amount: float
+
+class RazorpayVerifyRequest(BaseModel):
+    razorpay_payment_id: str
+    razorpay_order_id: str
+    razorpay_signature: str
+    amount: float
 
 router = APIRouter(prefix="/superadmin", tags=["superadmin"])
 
@@ -206,4 +227,77 @@ async def get_superadmin_settlements(db=Depends(get_db)):
         return res.data
     except Exception as e:
         print(f"ERROR in get_superadmin_settlements: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/wallet/create-razorpay-order")
+async def create_razorpay_order(data: RazorpayOrderRequest):
+    if not client:
+        raise HTTPException(status_code=500, detail="Razorpay keys not configured on backend")
+    try:
+        # amount is in rupees, Razorpay requires paise
+        amount_in_paise = int(data.amount * 100)
+        order_data = {
+            "amount": amount_in_paise,
+            "currency": "INR",
+            "payment_capture": 1 # Auto capture
+        }
+        order = client.order.create(data=order_data)
+        return {
+            "order_id": order["id"],
+            "amount": order["amount"],
+            "currency": order["currency"],
+            "key_id": RAZORPAY_KEY_ID
+        }
+    except Exception as e:
+        print(f"ERROR in create_razorpay_order: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/wallet/verify-razorpay-payment")
+async def verify_razorpay_payment(data: RazorpayVerifyRequest, db=Depends(get_db)):
+    if not client:
+        raise HTTPException(status_code=500, detail="Razorpay keys not configured on backend")
+    try:
+        # Verify payment signature
+        params_dict = {
+            'razorpay_order_id': data.razorpay_order_id,
+            'razorpay_payment_id': data.razorpay_payment_id,
+            'razorpay_signature': data.razorpay_signature
+        }
+        client.utility.verify_payment_signature(params_dict)
+        
+        # If signature verification passes, update wallet balance
+        settings = db.table("settings").select("*").eq("id", 1).execute()
+        if not settings.data:
+            settings = db.table("settings").select("*").limit(1).execute()
+            if not settings.data:
+                raise HTTPException(status_code=404, detail="Settings not found")
+        
+        sid = settings.data[0]["id"]
+        current_balance = float(settings.data[0].get("wallet_balance", 0))
+        new_balance = current_balance + data.amount
+        
+        # Update balance
+        db.table("settings").update({"wallet_balance": new_balance}).eq("id", sid).execute()
+        
+        # Log transaction
+        db.table("wallet_transactions").insert({
+            "type": "credit",
+            "amount": data.amount,
+            "reason": f"Wallet Recharge (Razorpay: {data.razorpay_payment_id})"
+        }).execute()
+        
+        return {"success": True, "new_balance": new_balance}
+    except razorpay.errors.SignatureVerificationError:
+        raise HTTPException(status_code=400, detail="Payment signature verification failed")
+    except Exception as e:
+        print(f"ERROR in verify_razorpay_payment: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/wallet/transactions")
+async def get_wallet_transactions(db=Depends(get_db)):
+    try:
+        res = db.table("wallet_transactions").select("*").order("created_at", desc=True).execute()
+        return res.data
+    except Exception as e:
+        print(f"ERROR in get_wallet_transactions: {e}")
         raise HTTPException(status_code=500, detail=str(e))

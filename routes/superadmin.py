@@ -230,7 +230,7 @@ async def get_superadmin_settlements(db=Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/wallet/create-razorpay-order")
-async def create_razorpay_order(data: RazorpayOrderRequest):
+def create_razorpay_order(data: RazorpayOrderRequest):
     if not client:
         raise HTTPException(status_code=500, detail="Razorpay keys not configured on backend")
     try:
@@ -253,7 +253,7 @@ async def create_razorpay_order(data: RazorpayOrderRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/wallet/verify-razorpay-payment")
-async def verify_razorpay_payment(data: RazorpayVerifyRequest, db=Depends(get_db)):
+def verify_razorpay_payment(data: RazorpayVerifyRequest, db=Depends(get_db)):
     if not client:
         raise HTTPException(status_code=500, detail="Razorpay keys not configured on backend")
     try:
